@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song List App</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Inter font and general body styling */
+        body {
+            font-family: "Inter", sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+        /* Hide scrollbar for a cleaner look, but keep functionality */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+
+        /* Styles for the zoomable image container */
+        #lyricsImageContainer {
+            position: relative; /* Needed for absolute positioning of controls */
+            overflow: hidden; /* Hide parts of the image when zoomed/panned outside bounds */
+            cursor: grab; /* Indicate draggable */
+            /* Ensure the image container itself is draggable */
+            touch-action: none; /* Prevent default browser touch actions like scrolling/zooming */
+        }
+
+        #lyricsImageContainer.dragging {
+            cursor: grabbing; /* Indicate currently dragging */
+        }
+
+        /* Ensure the image itself can be transformed */
+        #lyricsImage {
+            transform-origin: 0 0; /* Important for consistent scaling and panning */
+            transition: transform 0.05s ease-out; /* Smooth transitions for pan/zoom */
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-8 px-4 sm:px-6 lg:px-8">
+
+    <!-- Main Application Container -->
+    <div id="app-container" class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 flex flex-col">
+
+        <!-- Header -->
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">My Song List</h1>
+
+        <!-- Song List View -->
+        <div id="songListView" class="w-full flex flex-col">
+            <!-- Search Input -->
+            <input type="text" id="searchInput" placeholder="Search songs by title..."
+                   class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700">
+
+            <!-- Song List Container -->
+            <div id="songsContainer" class="flex flex-col gap-4 overflow-y-auto no-scrollbar max-h-[70vh]">
+                <!-- Song items will be dynamically inserted here -->
+            </div>
+        </div>
+
+        <!-- Lyrics View (initially hidden) -->
+        <div id="lyricsView" class="w-full flex-col items-center hidden">
+            <!-- Back Button -->
+            <button id="backButton" class="self-start mb-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 ease-in-out">
+                &larr; Back to Songs
+            </button>
+
+            <!-- Lyrics Song Title -->
+            <h2 id="lyricsSongTitle" class="text-2xl font-semibold text-gray-800 mb-4 text-center"></h2>
+
+            <!-- Lyrics Image Container with Zoom/Pan functionality -->
+            <div id="lyricsImageContainer" class="w-full h-[60vh] flex justify-center items-center bg-gray-200 rounded-lg shadow-md">
+                <img id="lyricsImage" src="" alt="Lyrics" class="w-full h-auto object-contain">
+                <!-- Zoom controls -->
+                <div class="absolute bottom-4 right-4 flex space-x-2">
+                    <button id="zoomInBtn" class="p-2 bg-blue-600 text-white rounded-full shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-300 ease-in-out">+</button>
+                    <button id="zoomOutBtn" class="p-2 bg-blue-600 text-white rounded-full shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-300 ease-in-out">-</button>
+                    <button id="resetZoomBtn" class="p-2 bg-blue-600 text-white rounded-full shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-300 ease-in-out">Reset</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Array of song objects with dummy data
+        const songs = [
+            { title: "Bohemian Rhapsody", artist: "Queen", lyricsImageUrl: "https://placehold.co/600x800/aabbcc/ffffff?text=Bohemian+Rhapsody+Lyrics" },
+            { title: "Stairway to Heaven", artist: "Led Zeppelin", lyricsImageUrl: "https://placehold.co/600x800/ccddeeff/000000?text=Stairway+to+Heaven+Lyrics" },
+            { title: "Hotel California", artist: "Eagles", lyricsImageUrl: "https://placehold.co/600x800/ffddcc/333333?text=Hotel+California+Lyrics" },
+            { title: "Imagine", artist: "John Lennon", lyricsImageUrl: "https://placehold.co/600x800/eebbff/444444?text=Imagine+Lyrics" },
+            { title: "Smells Like Teen Spirit", artist: "Nirvana", lyricsImageUrl: "https://placehold.co/600x800/ccffbb/555555?text=Smells+Like+Teen+Spirit+Lyrics" },
+            { title: "Billie Jean", artist: "Michael Jackson", lyricsImageUrl: "https://placehold.co/600x800/ddeeff/666666?text=Billie+Jean+Lyrics" },
+            { title: "Hey Jude", artist: "The Beatles", lyricsImageUrl: "https://placehold.co/600x800/aaddcc/777777?text=Hey+Jude+Lyrics" },
+            { title: "Sweet Child O' Mine", artist: "Guns N' Roses", lyricsImageUrl: "https://placehold.co/600x800/ffccaa/888888?text=Sweet+Child+O'+Mine+Lyrics" },
+            { title: "Livin' on a Prayer", artist: "Bon Jovi", lyricsImageUrl: "https://placehold.co/600x800/ccddff/999999?text=Livin'+on+a+Prayer+Lyrics" }
+        ];
+
+        // Get DOM elements
+        const searchInput = document.getElementById('searchInput');
+        const songsContainer = document.getElementById('songsContainer');
+        const songListView = document.getElementById('songListView');
+        const lyricsView = document.getElementById('lyricsView');
+        const lyricsSongTitle = document.getElementById('lyricsSongTitle');
+        const lyricsImageContainer = document.getElementById('lyricsImageContainer'); // New container for image
+        const lyricsImage = document.getElementById('lyricsImage');
+        const backButton = document.getElementById('backButton');
+        const zoomInBtn = document.getElementById('zoomInBtn');
+        const zoomOutBtn = document.getElementById('zoomOutBtn');
+        const resetZoomBtn = document.getElementById('resetZoomBtn');
+
+        // Zoom and Pan state variables
+        let currentScale = 1;
+        let translateX = 0;
+        let translateY = 0;
+        let isDragging = false;
+        let lastX = 0;
+        let lastY = 0;
+        let initialPinchDistance = 0;
+        let initialPinchScale = 1;
+
+        const zoomSensitivity = 0.1; // How much to zoom per step for buttons
+        const wheelZoomSensitivity = 0.005; // How much to zoom per wheel tick
+        const maxScale = 5; // Maximum zoom level
+        const minScale = 1; // Minimum zoom level
+
+        /**
+         * Applies the current scale and translate values to the lyrics image.
+         */
+        function applyTransform() {
+            lyricsImage.style.transform = `scale(${currentScale}) translate(${translateX}px, ${translateY}px)`;
+        }
+
+        /**
+         * Zooms the image in.
+         */
+        function zoomIn() {
+            if (currentScale < maxScale) {
+                currentScale += zoomSensitivity;
+                if (currentScale > maxScale) currentScale = maxScale; // Cap at max scale
+                applyTransform();
+            }
+        }
+
+        /**
+         * Zooms the image out.
+         */
+        function zoomOut() {
+            if (currentScale > minScale) {
+                currentScale -= zoomSensitivity;
+                if (currentScale < minScale) currentScale = minScale; // Cap at min scale
+                // If zoomed out to original size, reset pan
+                if (currentScale === minScale) {
+                    translateX = 0;
+                    translateY = 0;
+                }
+                applyTransform();
+            }
+        }
+
+        /**
+         * Resets the image to its original size and position.
+         */
+        function resetZoom() {
+            currentScale = 1;
+            translateX = 0;
+            translateY = 0;
+            applyTransform();
+        }
+
+        /**
+         * Handles mouse down event for panning.
+         * @param {MouseEvent} e - The mouse event.
+         */
+        function handleMouseDown(e) {
+            // Only allow dragging if zoomed in or if it's the primary mouse button (left click)
+            if (currentScale > minScale && e.button === 0) {
+                isDragging = true;
+                lyricsImageContainer.classList.add('dragging');
+                lastX = e.clientX;
+                lastY = e.clientY;
+            }
+        }
+
+        /**
+         * Handles mouse move event for panning.
+         * @param {MouseEvent} e - The mouse event.
+         */
+        function handleMouseMove(e) {
+            if (!isDragging) return;
+
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+
+            // Adjust translation based on current scale
+            translateX += dx / currentScale;
+            translateY += dy / currentScale;
+
+            lastX = e.clientX;
+            lastY = e.clientY;
+
+            applyTransform();
+        }
+
+        /**
+         * Handles mouse up/leave event to stop panning.
+         */
+        function handleMouseUp() {
+            isDragging = false;
+            lyricsImageContainer.classList.remove('dragging');
+        }
+
+        /**
+         * Calculates the distance between two touch points.
+         * @param {Touch} t1 - First touch point.
+         * @param {Touch} t2 - Second touch point.
+         * @returns {number} The distance between the two points.
+         */
+        function getTouchDistance(t1, t2) {
+            return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        }
+
+        /**
+         * Handles touch start event for panning and pinching.
+         * @param {TouchEvent} e - The touch event.
+         */
+        function handleTouchStart(e) {
+            if (e.touches.length === 1) { // Single touch for panning
+                if (currentScale > minScale) { // Only allow dragging if zoomed in
+                    isDragging = true;
+                    lyricsImageContainer.classList.add('dragging');
+                    lastX = e.touches[0].clientX;
+                    lastY = e.touches[0].clientY;
+                }
+            } else if (e.touches.length === 2) { // Two touches for pinching
+                isDragging = false; // Disable panning when pinching
+                lyricsImageContainer.classList.remove('dragging');
+
+                initialPinchDistance = getTouchDistance(e.touches[0], e.touches[1]);
+                initialPinchScale = currentScale;
+            }
+            e.preventDefault(); // Prevent default browser touch actions (scrolling, zooming)
+        }
+
+        /**
+         * Handles touch move event for panning and pinching.
+         * @param {TouchEvent} e - The touch event.
+         */
+        function handleTouchMove(e) {
+            if (e.touches.length === 1) { // Single touch for panning
+                if (!isDragging) return; // Only pan if dragging was initiated for a single touch
+
+                const dx = e.touches[0].clientX - lastX;
+                const dy = e.touches[0].clientY - lastY;
+
+                // Adjust translation based on current scale
+                translateX += dx / currentScale;
+                translateY += dy / currentScale;
+
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+
+                applyTransform();
+            } else if (e.touches.length === 2) { // Two touches for pinching
+                const currentPinchDistance = getTouchDistance(e.touches[0], e.touches[1]);
+
+                let newScale = initialPinchScale * (currentPinchDistance / initialPinchDistance);
+                newScale = Math.max(minScale, Math.min(newScale, maxScale));
+
+                // Simple zoom around center. For more complex zoom around pinch point,
+                // additional translation adjustments based on the center of the two touches would be needed.
+                // For this example, we'll keep it simple and allow panning after zoom.
+                currentScale = newScale;
+                applyTransform();
+            }
+            e.preventDefault(); // Prevent default browser touch actions (scrolling, zooming)
+        }
+
+        /**
+         * Handles touch end event to stop panning.
+         */
+        function handleTouchEnd() {
+            isDragging = false;
+            lyricsImageContainer.classList.remove('dragging');
+        }
+
+        /**
+         * Renders the list of songs in the UI.
+         * @param {Array<Object>} songList - The list of song objects to render.
+         */
+        function renderSongs(songList) {
+            songsContainer.innerHTML = ''; // Clear existing songs
+            if (songList.length === 0) {
+                songsContainer.innerHTML = '<p class="text-center text-gray-500">No songs found.</p>';
+                return;
+            }
+
+            songList.forEach(song => {
+                // Create song card element
+                const songCard = document.createElement('div');
+                songCard.className = 'bg-gray-50 p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 ease-in-out cursor-pointer';
+                songCard.innerHTML = `
+                    <h3 class="text-lg font-semibold text-gray-900">${song.title}</h3>
+                    <p class="text-sm text-gray-600">${song.artist}</p>
+                `;
+                // Attach click listener to each song card
+                songCard.addEventListener('click', () => showLyrics(song));
+                songsContainer.appendChild(songCard);
+            });
+        }
+
+        /**
+         * Filters the song list based on the search query and re-renders.
+         */
+        function filterSongs() {
+            const query = searchInput.value.toLowerCase();
+            const filteredSongs = songs.filter(song =>
+                song.title.toLowerCase().includes(query)
+            );
+            renderSongs(filteredSongs);
+        }
+
+        /**
+         * Displays the lyrics view for a selected song.
+         * @param {Object} song - The song object to display lyrics for.
+         */
+        function showLyrics(song) {
+            songListView.classList.add('hidden'); // Hide song list
+            lyricsView.classList.remove('hidden'); // Show lyrics view
+            lyricsView.classList.add('flex'); // Ensure flex display for lyrics view layout
+
+            lyricsSongTitle.textContent = song.title;
+            lyricsImage.src = song.lyricsImageUrl;
+
+            // Reset zoom and pan when a new image is loaded
+            resetZoom();
+
+            // Optional: Handle image loading errors
+            lyricsImage.onerror = () => {
+                lyricsImage.src = "https://placehold.co/600x800/ff0000/ffffff?text=Error+Loading+Lyrics"; // Fallback image
+                console.error(`Failed to load image for ${song.title}: ${song.lyricsImageUrl}`);
+            };
+        }
+
+        /**
+         * Hides the lyrics view and shows the song list view.
+         */
+        function hideLyrics() {
+            lyricsView.classList.add('hidden');
+            lyricsView.classList.remove('flex');
+            songListView.classList.remove('hidden');
+        }
+
+        // Event Listeners for Zoom and Pan
+        zoomInBtn.addEventListener('click', zoomIn);
+        zoomOutBtn.addEventListener('click', zoomOut);
+        resetZoomBtn.addEventListener('click', resetZoom);
+
+        // Mouse events for panning
+        lyricsImageContainer.addEventListener('mousedown', handleMouseDown);
+        lyricsImageContainer.addEventListener('mousemove', handleMouseMove);
+        lyricsImageContainer.addEventListener('mouseup', handleMouseUp);
+        lyricsImageContainer.addEventListener('mouseleave', handleMouseUp); // Stop dragging if mouse leaves container
+
+        // Touch events for panning and pinching
+        lyricsImageContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
+        lyricsImageContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
+        lyricsImageContainer.addEventListener('touchend', handleTouchEnd);
+        lyricsImageContainer.addEventListener('touchcancel', handleTouchEnd); // Handle touch cancellation
+
+        // Mouse wheel event for zooming
+        lyricsImageContainer.addEventListener('wheel', (e) => {
+            e.preventDefault(); // Prevent page scrolling
+
+            const scaleAmount = e.deltaY * -wheelZoomSensitivity; // Adjust sensitivity
+            let newScale = currentScale + scaleAmount;
+
+            newScale = Math.max(minScale, Math.min(newScale, maxScale));
+
+            // If zooming out to original size, reset pan
+            if (newScale <= minScale) { // Use <= to catch slight over-zoom-out
+                newScale = minScale;
+                translateX = 0;
+                translateY = 0;
+            }
+
+            currentScale = newScale;
+            applyTransform();
+        }, { passive: false }); // Use passive: false to allow preventDefault
+
+        // Event Listeners for App Navigation
+        searchInput.addEventListener('input', filterSongs);
+        backButton.addEventListener('click', hideLyrics);
+
+        // Initial render of all songs when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            renderSongs(songs);
+        });
+    </script>
+</body>
+</html>
